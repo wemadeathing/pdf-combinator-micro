@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { FileX, MoveUp, MoveDown, FilePlus, Download, RotateCcw } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 
@@ -7,6 +7,20 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [combined, setCombined] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  
+  // Create refs for file inputs
+  const initialFileInputRef = useRef<HTMLInputElement>(null);
+  const additionalFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Maximum sizes - these could be modified based on your requirements
+  // Use 0 for unlimited size
+  const MAX_INDIVIDUAL_FILE_SIZE = 0; // No individual file size limit
+  const MAX_TOTAL_SIZE = 0; // No total size limit
+
+  const getTotalSize = () => {
+    return files.reduce((sum, file) => sum + file.size, 0);
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -27,6 +41,29 @@ function App() {
     );
     
     if (pdfFiles.length > 0) {
+      // Check file sizes if limits are set
+      if (MAX_INDIVIDUAL_FILE_SIZE > 0) {
+        const oversizedFiles = pdfFiles.filter(file => file.size > MAX_INDIVIDUAL_FILE_SIZE);
+        if (oversizedFiles.length > 0) {
+          const filesNames = oversizedFiles.map(f => f.name).join(', ');
+          const maxSizeMB = (MAX_INDIVIDUAL_FILE_SIZE / (1024 * 1024)).toFixed(2);
+          alert(`The following files exceed the maximum size of ${maxSizeMB} MB: ${filesNames}`);
+          return;
+        }
+      }
+      
+      // Check total size if limit is set
+      if (MAX_TOTAL_SIZE > 0) {
+        const newTotalSize = getTotalSize() + pdfFiles.reduce((sum, file) => sum + file.size, 0);
+        if (newTotalSize > MAX_TOTAL_SIZE) {
+          const currentMB = (getTotalSize() / (1024 * 1024)).toFixed(2);
+          const newMB = (newTotalSize / (1024 * 1024)).toFixed(2);
+          const maxMB = (MAX_TOTAL_SIZE / (1024 * 1024)).toFixed(2);
+          alert(`Adding these files would increase the total size from ${currentMB} MB to ${newMB} MB, which exceeds the limit of ${maxMB} MB.`);
+          return;
+        }
+      }
+      
       setFiles(prevFiles => [...prevFiles, ...pdfFiles]);
     }
   };
@@ -40,8 +77,34 @@ function App() {
     );
     
     if (pdfFiles.length > 0) {
+      // Check file sizes if limits are set
+      if (MAX_INDIVIDUAL_FILE_SIZE > 0) {
+        const oversizedFiles = pdfFiles.filter(file => file.size > MAX_INDIVIDUAL_FILE_SIZE);
+        if (oversizedFiles.length > 0) {
+          const filesNames = oversizedFiles.map(f => f.name).join(', ');
+          const maxSizeMB = (MAX_INDIVIDUAL_FILE_SIZE / (1024 * 1024)).toFixed(2);
+          alert(`The following files exceed the maximum size of ${maxSizeMB} MB: ${filesNames}`);
+          return;
+        }
+      }
+      
+      // Check total size if limit is set
+      if (MAX_TOTAL_SIZE > 0) {
+        const newTotalSize = getTotalSize() + pdfFiles.reduce((sum, file) => sum + file.size, 0);
+        if (newTotalSize > MAX_TOTAL_SIZE) {
+          const currentMB = (getTotalSize() / (1024 * 1024)).toFixed(2);
+          const newMB = (newTotalSize / (1024 * 1024)).toFixed(2);
+          const maxMB = (MAX_TOTAL_SIZE / (1024 * 1024)).toFixed(2);
+          alert(`Adding these files would increase the total size from ${currentMB} MB to ${newMB} MB, which exceeds the limit of ${maxMB} MB.`);
+          return;
+        }
+      }
+      
       setFiles(prevFiles => [...prevFiles, ...pdfFiles]);
     }
+    
+    // Clear the file input value so the same file can be selected again
+    e.target.value = '';
   };
 
   const removeFile = (index: number) => {
@@ -74,24 +137,39 @@ function App() {
   const combineFiles = async () => {
     try {
       setIsProcessing(true);
+      setProcessingProgress(0);
       
       // Create a new PDF document
       const mergedPdf = await PDFDocument.create();
       
-      // Process each file
-      for (const file of files) {
-        // Convert File to ArrayBuffer
-        const fileBuffer = await file.arrayBuffer();
-        // Load the PDF document
-        const pdf = await PDFDocument.load(fileBuffer);
-        // Copy all pages
-        const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-        // Add each page to the new document
-        pages.forEach(page => mergedPdf.addPage(page));
+      // Process each file with progress tracking
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+          // Convert File to ArrayBuffer
+          const fileBuffer = await file.arrayBuffer();
+          // Load the PDF document - this could be slow for large files
+          const pdf = await PDFDocument.load(fileBuffer, {
+            ignoreEncryption: true,
+          });
+          // Copy all pages
+          const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+          // Add each page to the new document
+          pages.forEach(page => mergedPdf.addPage(page));
+          
+          // Update progress
+          setProcessingProgress(Math.round(((i + 1) / files.length) * 100));
+        } catch (fileError) {
+          console.error(`Error processing file ${file.name}:`, fileError);
+          alert(`Error processing file ${file.name}. This file may be corrupted or password-protected.`);
+          // Continue with other files instead of stopping the whole process
+        }
       }
       
       setCombined(true);
       setIsProcessing(false);
+      setProcessingProgress(100);
     } catch (error) {
       console.error('Error combining PDFs:', error);
       alert('There was an error combining the PDFs. Please try again.');
@@ -113,25 +191,41 @@ function App() {
   const downloadCombinedPDF = async () => {
     try {
       setIsProcessing(true);
+      setProcessingProgress(0);
       
       // Create a new PDF document
       const mergedPdf = await PDFDocument.create();
       
-      // Process each file
-      for (const file of files) {
-        // Convert File to ArrayBuffer
-        const fileBuffer = await file.arrayBuffer();
-        // Load the PDF document
-        const pdf = await PDFDocument.load(fileBuffer);
-        // Copy all pages
-        const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-        // Add each page to the new document
-        pages.forEach(page => mergedPdf.addPage(page));
+      // Process each file with progress tracking
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+          // Convert File to ArrayBuffer
+          const fileBuffer = await file.arrayBuffer();
+          // Load the PDF document
+          const pdf = await PDFDocument.load(fileBuffer, {
+            ignoreEncryption: true,
+          });
+          // Copy all pages
+          const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+          // Add each page to the new document
+          pages.forEach(page => mergedPdf.addPage(page));
+          
+          // Update progress
+          setProcessingProgress(Math.round((i / files.length) * 80)); // Use 80% for processing
+        } catch (fileError) {
+          console.error(`Error processing file ${file.name}:`, fileError);
+          alert(`Error processing file ${file.name}. This file may be corrupted or password-protected.`);
+          // Continue with other files
+        }
       }
       
+      setProcessingProgress(90); // 90% for PDF saving
       // Save the merged PDF as bytes
       const mergedPdfBytes = await mergedPdf.save();
       
+      setProcessingProgress(95); // 95% for blob creation
       // Create a blob from the PDF bytes
       const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
       
@@ -150,6 +244,7 @@ function App() {
       
       // Release the URL object
       window.URL.revokeObjectURL(url);
+      setProcessingProgress(100);
       setIsProcessing(false);
     } catch (error) {
       console.error('Error downloading PDF:', error);
@@ -183,7 +278,7 @@ function App() {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              onClick={() => document.getElementById('file-input')?.click()}
+              onClick={() => initialFileInputRef.current?.click()}
             >
               <FilePlus className="mx-auto h-12 w-12 text-gray-400 mb-3" />
               <p className="text-gray-500 mb-2">Drag and drop PDF files here</p>
@@ -193,6 +288,7 @@ function App() {
               </button>
               <input 
                 id="file-input" 
+                ref={initialFileInputRef}
                 type="file" 
                 accept=".pdf,application/pdf" 
                 multiple 
@@ -273,12 +369,20 @@ function App() {
 
               <div className="flex justify-between">
                 <button 
-                  onClick={() => document.getElementById('file-input')?.click()}
+                  onClick={() => additionalFileInputRef.current?.click()}
                   className="border border-gray-300 bg-gray-50 text-gray-700 px-4 py-2 rounded hover:bg-gray-100 transition-colors flex items-center"
                 >
                   <FilePlus className="h-4 w-4 mr-2" />
                   Add More Files
                 </button>
+                <input 
+                  ref={additionalFileInputRef}
+                  type="file" 
+                  accept=".pdf,application/pdf" 
+                  multiple 
+                  className="hidden" 
+                  onChange={handleFileInput}
+                />
                 <button 
                   onClick={combineFiles}
                   disabled={files.length < 2 || combined || isProcessing}
@@ -286,9 +390,20 @@ function App() {
                     files.length < 2 || combined || isProcessing ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
                   }`}
                 >
-                  {isProcessing ? 'Processing...' : combined ? 'Files Combined' : 'Combine Files'}
+                  {isProcessing ? `Processing... ${processingProgress}%` : combined ? 'Files Combined' : 'Combine Files'}
                 </button>
               </div>
+
+              {isProcessing && (
+                <div className="mt-4">
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                      style={{ width: `${processingProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -307,7 +422,7 @@ function App() {
                   className={`bg-green-600 text-white px-4 py-2 rounded flex items-center ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-green-700'}`}
                 >
                   <Download className="h-4 w-4 mr-2" />
-                  {isProcessing ? 'Processing...' : 'Download PDF'}
+                  {isProcessing ? `Processing... ${processingProgress}%` : 'Download PDF'}
                 </button>
               </div>
             </div>
@@ -318,8 +433,8 @@ function App() {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h3 className="text-blue-800 font-medium mb-2">About this tool</h3>
           <p className="text-blue-700 text-sm">
-            This tool combines multiple PDF files into one document. You can arrange the files in any order before combining. 
-            The original files remain unchanged.
+            This tool combines multiple PDF files into one document. There is no file size limit, but very large files (100+ MB) may take longer to process.
+            The processing speed depends on your device's capabilities. The original files remain unchanged.
           </p>
         </div>
       </main>
