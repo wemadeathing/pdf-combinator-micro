@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { FileX, MoveUp, MoveDown, FilePlus, Download, RotateCcw } from 'lucide-react';
+import { FileX, MoveUp, MoveDown, FilePlus, Download, RotateCcw, CheckCircle, X } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 
 function App() {
@@ -8,6 +8,7 @@ function App() {
   const [combined, setCombined] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   
   // Create refs for file inputs
   const initialFileInputRef = useRef<HTMLInputElement>(null);
@@ -180,6 +181,7 @@ function App() {
   const resetApp = () => {
     setFiles([]);
     setCombined(false);
+    setShowSuccessModal(false);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -246,6 +248,9 @@ function App() {
       window.URL.revokeObjectURL(url);
       setProcessingProgress(100);
       setIsProcessing(false);
+      
+      // Show success modal
+      setShowSuccessModal(true);
     } catch (error) {
       console.error('Error downloading PDF:', error);
       alert('There was an error downloading the PDF. Please try again.');
@@ -442,6 +447,43 @@ function App() {
       <footer className="bg-gray-100 p-4 text-center text-xs text-gray-500 border-t border-gray-200">
         PDF Combinator — Free Online PDF Merger
       </footer>
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6 relative">
+            <button 
+              onClick={() => setShowSuccessModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="flex flex-col items-center text-center">
+              <div className="bg-green-100 p-3 rounded-full mb-4">
+                <CheckCircle className="h-10 w-10 text-green-500" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">PDF Downloaded Successfully!</h3>
+              <p className="text-gray-600 mb-6">
+                Your PDF files have been combined and downloaded successfully. What would you like to do next?
+              </p>
+              <div className="flex space-x-4 w-full">
+                <button
+                  onClick={resetApp}
+                  className="flex-1 bg-blue-600 text-white font-medium py-2 px-4 rounded hover:bg-blue-700 transition-colors"
+                >
+                  Start Over
+                </button>
+                <button
+                  onClick={() => setShowSuccessModal(false)}
+                  className="flex-1 border border-gray-300 bg-white text-gray-700 font-medium py-2 px-4 rounded hover:bg-gray-50 transition-colors"
+                >
+                  Continue Editing
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
